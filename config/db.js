@@ -14,9 +14,11 @@ exports.connect = () => {
       console.log("db connected");
       
     })
-    .catch((err) => {
-     console.log("error while connecting db");
-     
+   .catch(err => {
+   console.error("error while connecting db");
+   if(process.env.NODE_ENV !== "test"){
       process.exit(1);
-    });
+   }
+});
+
 };
