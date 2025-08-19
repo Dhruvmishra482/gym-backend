@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser')
 const cors = require("cors")
 require("dotenv").config()
 const authRoutes = require("./routes/authRoutes")
+const memberRoutes=require("./routes/memberRoutes")
 
 database.connect()
 app.use(express.json());
@@ -22,6 +23,10 @@ app.use(
 );
 
 app.use("/api/v1/auth",authRoutes)
+app.use("/api/v1/member",memberRoutes)
+
+
+
 app.listen(process.env.PORT,() =>
 {
 });

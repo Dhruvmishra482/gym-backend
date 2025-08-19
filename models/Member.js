@@ -26,7 +26,7 @@ const memberSchema = new mongoose.Schema({
         default: Date.now()
     },
     planDuration: {
-        type: string,
+        type: String,
         enum: ["1 month","3 month","6 month","1 year"]
     },
     feesAmount: {

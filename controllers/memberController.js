@@ -1,38 +1,53 @@
-const Member = require("../models/Member")
+const Member = require("../models/Member");
 
-exports.addMember = async (req,res) =>
-{
-    try
-    {
-        const [name,phoneNo,email,gender,age,joiningDate,planDuration,feesAmount,nextDueDate,paymentStatus,lastPaidOn,address] = req.body;
+exports.addMember = async (req, res) => {
+  try {
+    const {
+      name,
+      phoneNo,
+      email,
+      gender,
+      age,
+      joiningDate,
+      planDuration,
+      feesAmount,
+      nextDueDate,
+      paymentStatus,
+      lastPaidOn,
+      address,
+    } = req.body;
 
-        const checkUser = await Member.findOne({ phoneNo });
-
-        if (checkUser)
-        {
-            return res.json({
-                message: "User is already our Member",
-                data: checkUser
-            })
-        }
-
-        const newUser = new Member({
-            name,phoneNo,email,gender,age,joiningDate,planDuration,feesAmount,nextDueDate,paymentStatus,lastPaidOn,address
-        })
-
-        const newMember = await newUser.save();
-
-        const token = await newMember.getJWT();
-
-        res.cookie("token",token);
-
-        res.json({
-            message: "New Member Added",
-            data: newMember
-        });
-
-    } catch (error)
-    {
-        res.status(401).send(error.message);
+    const existingMember = await Member.findOne({ phoneNo });
+    if (existingMember) {
+      return res
+        .status(409)
+        .json({ success: false, message: "Member already exists" });
     }
-}
+
+    const member = await Member.create({
+      name,
+      phoneNo,
+      email,
+      gender,
+      age,
+      joiningDate,
+      planDuration,
+      feesAmount,
+      nextDueDate,
+      paymentStatus,
+      lastPaidOn,
+      address,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "New member added successfully",
+      data: member,
+    });
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ success: false, message: "Unable to add member, please try again" });
+  }
+};

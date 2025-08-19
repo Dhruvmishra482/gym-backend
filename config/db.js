@@ -1,8 +1,22 @@
+// config/database.js
 const mongoose = require("mongoose");
+require("dotenv").config();
 
-const connectDb = async () =>
-{
-    await mongoose.connect("mongodb+srv://govindsingh988877:SeCj8nCrPHpjw88U@bmw.yq6ggqm.mongodb.net/CoreTrack");
-}
+const MONGODB_URL = process.env.MONGODB_URL;
 
-module.exports = connectDb;
+exports.connect = () => {
+  mongoose
+    .connect(MONGODB_URL, {
+    //   useNewUrlParser: true,
+    //   useUnifiedTopology: true,
+    })
+    .then(() => {
+      console.log("db connected");
+      
+    })
+    .catch((err) => {
+     console.log("error while connecting db");
+     
+      process.exit(1);
+    });
+};
