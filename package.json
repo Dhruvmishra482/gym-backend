@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-     "test": "set NODE_ENV=test&& jest",
+    "test": "set NODE_ENV=test&& jest",
     "start": "node server.js"
   },
   "keywords": [],
@@ -18,7 +18,9 @@
     "express": "^5.1.0",
     "express-validator": "^7.2.1",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.17.1"
+    "mongoose": "^8.17.1",
+    "node-cron": "^4.2.1",
+    "twilio": "^5.8.0"
   },
   "devDependencies": {
     "jest": "^30.0.5",
