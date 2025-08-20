@@ -36,7 +36,7 @@ const memberSchema = new mongoose.Schema({
     },
     nextDueDate: {
         type: Date,
-        required: true
+        // required: true
     },
     paymentStatus: {
         type: String,
