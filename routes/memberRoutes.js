@@ -1,7 +1,9 @@
 const express = require("express");
 const { body, validationResult } = require("express-validator");
 const { addMember } = require("../controllers/memberController");
+const { auth, isOwner } = require("../middleware/authMiddleware");
 const router = express.Router();
+
 
 router.post(
   "/addmember",
@@ -19,6 +21,8 @@ router.post(
     }
     next();
   },
+  auth,
+  isOwner,
   addMember
 );
 
