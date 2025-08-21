@@ -52,11 +52,11 @@ exports.login = async (req, res) => {
       return res.status(401).json({ success: false, message: "Incorrect password" });
     }
 
-    const token = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "12h" }
-    );
+  const token = jwt.sign(
+  { id: user._id, email: user.email, role: user.accountType }, 
+  process.env.JWT_SECRET,
+  { expiresIn: process.env.JWT_EXPIRES_IN || "12h" }
+);
 
     user.password = undefined;
 
@@ -64,7 +64,8 @@ exports.login = async (req, res) => {
       .cookie("token", token, {
         expires: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
         httpOnly: true,
-        secure: true,
+        // secure: true,
+        secure:false,
         sameSite: "none",
       })
       .status(200)

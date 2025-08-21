@@ -6,6 +6,7 @@ const request = require("supertest");
 const mongoose = require("mongoose");
 
 let app;
+// const randomEmail = `owner+${Date.now()}@test.com`;
 
 beforeAll(async () => {
   // connect to your real DB
@@ -27,9 +28,10 @@ describe("Auth API", () => {
         firstName: "Test",
         lastName: "User",
         mobileNumber: "9999999999",
-        email: "test@gmail.com",
+        email:"dhruvmishra1234@gmail.com",
         password: "123456",
         confirmPassword: "123456",
+         role: "owner"
       });
 
     expect(res.statusCode).toBe(201);
