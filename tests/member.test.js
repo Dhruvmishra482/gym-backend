@@ -20,7 +20,7 @@ beforeAll(async () => {
     .post("/api/v1/auth/login")
     .send({
       email: "dhruvmishra1234@gmail.com",
-      password:"123456", 
+      password:"123456",
     });
 
   token = loginRes.body.token;

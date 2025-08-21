@@ -4,6 +4,8 @@ const { body,validationResult } = require("express-validator");
 const { signUp,login,logout } = require("../controllers/authController");
 const router = express.Router();
 
+const {auth}=require("../middleware/authMiddleware")
+
 router.post(
   "/signup",
   [
@@ -25,19 +27,18 @@ router.post(
   },
   signUp
 );
-
 router.post(
   "/login",
   [
     body("email").isEmail(),
     body("password").notEmpty()
   ],
-  (req,res,next) =>
-  {
+  (req, res, next) => {
+    console.log("Login payload:", req.body); 
     const errors = validationResult(req);
-    if (!errors.isEmpty())
-    {
-      return res.status(400).json({ success: false,errors: errors.array() });
+    if (!errors.isEmpty()) {
+      console.log("Validation errors:", errors.array());  
+      return res.status(400).json({ success: false, errors: errors.array() });
     }
     next();
   },
@@ -45,6 +46,10 @@ router.post(
 );
 
 router.get("/logout",logout);
+
+router.get("/me", auth, (req, res) => {
+  res.json({ user: req.user });
+});
 
 
 module.exports = router;

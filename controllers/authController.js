@@ -41,6 +41,8 @@ exports.signUp = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log("REQ BODY: ", req.body);
+
 
     const user = await Owner.findOne({ email });
     if (!user) {
