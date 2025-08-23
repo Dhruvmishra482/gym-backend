@@ -14,7 +14,16 @@ router.post(
     body("mobileNumber").notEmpty(),
     body("email").isEmail(),
     body("password").isLength({ min: 6 }),
-    body("confirmPassword").custom((value,{ req }) => value === req.body.password),
+  body("confirmPassword")
+  .notEmpty().withMessage("Confirm Password is required")
+  .custom((value, { req }) => {
+    if (value !== req.body.password) {
+      throw new Error("Passwords do not match");
+    }
+    return true;
+  })
+
+
   ],
   (req,res,next) =>
   {

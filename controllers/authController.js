@@ -7,6 +7,8 @@ exports.signUp = async (req, res) => {
   try {
     const { firstName, lastName, mobileNumber, email, password } = req.body;
 
+       console.log("Signup Request Body:", req.body);
+
     const existingUser = await Owner.findOne({ email });
     if (existingUser) {
       return res.status(409).json({ success: false, message: "User already exists" });
