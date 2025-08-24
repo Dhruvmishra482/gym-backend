@@ -40,51 +40,105 @@ exports.signUp = async (req, res) => {
   }
 };
 
+// exports.login = async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+//     console.log("REQ BODY: ", req.body);
+
+
+//     const user = await Owner.findOne({ email });
+//     if (!user) {
+//       return res.status(400).json({ success: false, message: "User not registered" });
+//     }
+
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     if (!isMatch) {
+//       return res.status(401).json({ success: false, message: "Incorrect password" });
+//     }
+
+//   const token = jwt.sign(
+//   { id: user._id, email: user.email, role: user.accountType }, 
+//   process.env.JWT_SECRET,
+//   { expiresIn: process.env.JWT_EXPIRES_IN || "12h" }
+// );
+
+//     user.password = undefined;
+
+//     res
+//       .cookie("token", token, {
+//         expires: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+//   httpOnly: true,
+//   secure: false,   // local dev ke liye false
+//   sameSite: "none", // local dev me "lax" use karo
+//       })
+//       .status(200)
+//       .json({
+//         success: true,
+//         message: "Login successful",
+//         token,
+//         user,
+//       });
+//   } catch (error) {
+//     console.error(error);
+//     return res.status(500).json({ success: false, message: "Unable to login, please try again" });
+//   }
+// };
+
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
     console.log("REQ BODY: ", req.body);
-
-
+    
     const user = await Owner.findOne({ email });
     if (!user) {
-      return res.status(400).json({ success: false, message: "User not registered" });
+      return res.status(400).json({ 
+        success: false, 
+        message: "User not registered" 
+      });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: "Incorrect password" });
+      return res.status(401).json({ 
+        success: false, 
+        message: "Incorrect password" 
+      });
     }
 
-  const token = jwt.sign(
-  { id: user._id, email: user.email, role: user.accountType }, 
-  process.env.JWT_SECRET,
-  { expiresIn: process.env.JWT_EXPIRES_IN || "12h" }
-);
+    const token = jwt.sign(
+      { id: user._id, email: user.email, role: user.accountType },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" } // Changed to 7 days to match frontend
+    );
 
+    // Remove password from user object
     user.password = undefined;
 
+    // Cookie settings - adjust based on environment
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     res
       .cookie("token", token, {
-        expires: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days to match frontend
         httpOnly: true,
-        // secure: true,
-        secure:false,
-        sameSite: "none",
+        secure: isProduction, // true in production, false in development
+        sameSite: isProduction ? "none" : "lax", // "none" for production with HTTPS, "lax" for development
+        path: '/', // Ensure cookie is available for all routes
       })
       .status(200)
       .json({
         success: true,
         message: "Login successful",
-        token,
-        user,
+        user, // Only send user data, not the token (since it's in httpOnly cookie)
       });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ success: false, message: "Unable to login, please try again" });
+    console.error("Login error:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Unable to login, please try again" 
+    });
   }
 };
-
 exports.logout = (req, res) => {
   res
     .clearCookie("token", { httpOnly: true, sameSite: "none", secure: true })
