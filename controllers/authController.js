@@ -40,49 +40,6 @@ exports.signUp = async (req, res) => {
   }
 };
 
-// exports.login = async (req, res) => {
-//   try {
-//     const { email, password } = req.body;
-//     console.log("REQ BODY: ", req.body);
-
-
-//     const user = await Owner.findOne({ email });
-//     if (!user) {
-//       return res.status(400).json({ success: false, message: "User not registered" });
-//     }
-
-//     const isMatch = await bcrypt.compare(password, user.password);
-//     if (!isMatch) {
-//       return res.status(401).json({ success: false, message: "Incorrect password" });
-//     }
-
-//   const token = jwt.sign(
-//   { id: user._id, email: user.email, role: user.accountType }, 
-//   process.env.JWT_SECRET,
-//   { expiresIn: process.env.JWT_EXPIRES_IN || "12h" }
-// );
-
-//     user.password = undefined;
-
-//     res
-//       .cookie("token", token, {
-//         expires: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-//   httpOnly: true,
-//   secure: false,   // local dev ke liye false
-//   sameSite: "none", // local dev me "lax" use karo
-//       })
-//       .status(200)
-//       .json({
-//         success: true,
-//         message: "Login successful",
-//         token,
-//         user,
-//       });
-//   } catch (error) {
-//     console.error(error);
-//     return res.status(500).json({ success: false, message: "Unable to login, please try again" });
-//   }
-// };
 
 exports.login = async (req, res) => {
   try {
