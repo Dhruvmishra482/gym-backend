@@ -30,8 +30,18 @@ const ownerSchema = new mongoose.Schema(
             type: String,
             default: "owner",
         },
+        isVerified: {
+            type: Boolean,
+            default: false,
+        },
+        otp: {
+            type: String,
+        },
+        otpExpires: {
+            type: Date,
+        },
     },
     { timestamps: true }
 );
 
-module.exports = mongoose.model("Owner",ownerSchema);
+module.exports = mongoose.model("Owner", ownerSchema);
