@@ -95,3 +95,21 @@ exports.deleteMember = async (req, res) => {
     res.status(500).json({ success: false, message: "Unable to delete member, please try again" });
   }
 };
+
+exports.getAllMembers = async (req, res) => {
+  try {
+    const members = await Member.find({}).sort({ joiningDate: -1 });
+    
+    res.status(200).json({
+      success: true,
+      message: "Members fetched successfully",
+      data: members,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Unable to fetch members, please try again" 
+    });
+  }
+};

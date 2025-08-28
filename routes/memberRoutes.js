@@ -1,6 +1,6 @@
 const express = require("express");
 const { body, validationResult } = require("express-validator");
-const { addMember, editMember, deleteMember } = require("../controllers/memberController");
+const { getAllMembers, addMember, editMember, deleteMember } = require("../controllers/memberController");
 const { auth, isOwner } = require("../middleware/authMiddleware");
 
 const router = express.Router();
@@ -12,6 +12,9 @@ const validate = (validations) => async (req, res, next) => {
   if (errors.isEmpty()) return next();
   return res.status(400).json({ success: false, errors: errors.array() });
 };
+
+// Get All Members
+router.get("/allmembers", auth, isOwner, getAllMembers);
 
 // Add Member
 router.post(
