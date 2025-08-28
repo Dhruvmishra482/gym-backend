@@ -1,20 +1,21 @@
 const express = require("express");
-const { body, validationResult } = require("express-validator");
-const { getAllMembers, addMember, editMember, deleteMember } = require("../controllers/memberController");
-const { auth, isOwner } = require("../middleware/authMiddleware");
+const { body,validationResult } = require("express-validator");
+const { getAllMembers,addMember,editMember,deleteMember,getMemberByPhone } = require("../controllers/memberController");
+const { auth,isOwner } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
 // Validation middleware
-const validate = (validations) => async (req, res, next) => {
+const validate = (validations) => async (req,res,next) =>
+{
   await Promise.all(validations.map((v) => v.run(req)));
   const errors = validationResult(req);
   if (errors.isEmpty()) return next();
-  return res.status(400).json({ success: false, errors: errors.array() });
+  return res.status(400).json({ success: false,errors: errors.array() });
 };
 
 // Get All Members
-router.get("/allmembers", auth, isOwner, getAllMembers);
+router.get("/allmembers",auth,isOwner,getAllMembers);
 
 // Add Member
 router.post(
@@ -32,18 +33,9 @@ router.post(
 );
 
 // Edit Member
-router.patch(
-  "/editmember/:phoneNo",
-  auth,
-  isOwner,
-  validate([
-    body("feesAmount").optional().notEmpty(),
-    body("nextDueDate").optional().notEmpty(),
-  ]),
-  editMember
-);
+router.get("/getmember/:phoneNo",auth,isOwner,getMemberByPhone);
 
 // Delete Member
-router.delete("/deletemember/:phoneNo", auth, isOwner, deleteMember);
+// router.delete("/deletemember/:phoneNo", auth, isOwner, deleteMember);
 
 module.exports = router;
