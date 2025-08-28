@@ -129,3 +129,52 @@ exports.getAllMembers = async (req,res) =>
     });
   }
 };
+
+// Add this function to your memberController.js file
+
+// Edit Member
+exports.editMember = async (req,res) =>
+{
+  try
+  {
+    const { phoneNo } = req.params;
+    const updateData = req.body;
+
+    // Remove empty or undefined fields from updateData
+    const cleanUpdateData = {};
+    Object.keys(updateData).forEach(key =>
+    {
+      if (updateData[key] !== undefined && updateData[key] !== null && updateData[key] !== '')
+      {
+        cleanUpdateData[key] = updateData[key];
+      }
+    });
+
+    const updatedMember = await Member.findOneAndUpdate(
+      { phoneNo },
+      cleanUpdateData,
+      { new: true,runValidators: true }
+    );
+
+    if (!updatedMember)
+    {
+      return res.status(404).json({
+        success: false,
+        message: "Member not found with this phone number"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Member updated successfully",
+      data: updatedMember,
+    });
+  } catch (error)
+  {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Unable to update member, please try again"
+    });
+  }
+};

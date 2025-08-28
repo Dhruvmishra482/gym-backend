@@ -35,6 +35,8 @@ router.post(
 // Edit Member
 router.get("/getmember/:phoneNo",auth,isOwner,getMemberByPhone);
 
+router.patch("/editmember/:phoneNo",auth,isOwner,editMember);
+
 // Delete Member
 // router.delete("/deletemember/:phoneNo", auth, isOwner, deleteMember);
 
