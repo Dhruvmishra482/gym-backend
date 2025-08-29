@@ -1,6 +1,6 @@
 const express = require("express");
 const { body,validationResult } = require("express-validator");
-const { getAllMembers,addMember,editMember,deleteMember,getMemberByPhone } = require("../controllers/memberController");
+const { getAllMembers,addMember,editMember,deleteMember,getMemberByPhone,searchMember,getAllMemberNames } = require("../controllers/memberController");
 const { auth,isOwner } = require("../middleware/authMiddleware");
 
 const router = express.Router();
@@ -36,6 +36,12 @@ router.post(
 router.get("/getmember/:phoneNo",auth,isOwner,getMemberByPhone);
 
 router.patch("/editmember/:phoneNo",auth,isOwner,editMember);
+
+// Add this line with your other routes
+router.get("/search/:query",auth,isOwner,searchMember);
+
+// Add this route for debugging
+router.get("/debug/names",auth,isOwner,getAllMemberNames);
 
 // Delete Member
 // router.delete("/deletemember/:phoneNo", auth, isOwner, deleteMember);

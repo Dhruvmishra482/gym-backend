@@ -178,3 +178,121 @@ exports.editMember = async (req,res) =>
     });
   }
 };
+
+// Alternative Search Member function - Complete rewrite
+exports.searchMember = async (req,res) =>
+{
+  try
+  {
+    const { query } = req.params;
+
+    // Basic validation
+    if (!query || query.trim() === '')
+    {
+      return res.status(400).json({
+        success: false,
+        message: "Search query is required"
+      });
+    }
+
+    const searchTerm = query.trim();
+    console.log('=== SEARCH DEBUG START ===');
+    console.log('Raw query:',query);
+    console.log('Trimmed search term:',searchTerm);
+
+    // Determine if it's a phone number or name
+    const isPhoneNumber = /^\d+$/.test(searchTerm);
+    console.log('Is phone number:',isPhoneNumber);
+
+    let foundMember = null;
+
+    if (isPhoneNumber)
+    {
+      // Phone number search - exact match
+      console.log('Searching by phone number...');
+      foundMember = await Member.findOne({ phoneNo: searchTerm });
+      console.log('Phone search result:',foundMember ? foundMember.name : 'Not found');
+    } else
+    {
+      // Name search - multiple strategies
+      console.log('Searching by name...');
+
+      // Strategy 1: Exact case-insensitive match
+      foundMember = await Member.findOne({
+        name: new RegExp(`^${searchTerm}$`,'i')
+      });
+      console.log('Exact match result:',foundMember ? foundMember.name : 'Not found');
+
+      // Strategy 2: If not found, try partial match from beginning
+      if (!foundMember)
+      {
+        foundMember = await Member.findOne({
+          name: new RegExp(`^${searchTerm}`,'i')
+        });
+        console.log('Starts with match result:',foundMember ? foundMember.name : 'Not found');
+      }
+
+      // Strategy 3: If still not found, try contains match
+      if (!foundMember)
+      {
+        foundMember = await Member.findOne({
+          name: new RegExp(searchTerm,'i')
+        });
+        console.log('Contains match result:',foundMember ? foundMember.name : 'Not found');
+      }
+    }
+
+    console.log('=== SEARCH DEBUG END ===');
+
+    // Return result
+    if (!foundMember)
+    {
+      return res.status(404).json({
+        success: false,
+        message: isPhoneNumber
+          ? `No member found with phone number: ${searchTerm}`
+          : `No member found with name: ${searchTerm}`
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Member found successfully",
+      data: foundMember
+    });
+
+  } catch (error)
+  {
+    console.error('=== SEARCH ERROR ===');
+    console.error('Error details:',error);
+    console.error('Stack trace:',error.stack);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error during search",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Also add this helper function to test your database directly
+exports.getAllMemberNames = async (req,res) =>
+{
+  try
+  {
+    const members = await Member.find({},{ name: 1,phoneNo: 1,_id: 0 });
+
+    return res.status(200).json({
+      success: true,
+      message: "All member names retrieved",
+      data: members
+    });
+  } catch (error)
+  {
+    console.error('Error getting member names:',error);
+    return res.status(500).json({
+      success: false,
+      message: "Error retrieving member names"
+    });
+  }
+};
