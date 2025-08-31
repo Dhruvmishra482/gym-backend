@@ -6,6 +6,7 @@ const cors = require("cors")
 require("dotenv").config()
 const authRoutes = require("./routes/authRoutes")
 const memberRoutes=require("./routes/memberRoutes")
+const ownerRoutes=require("./routes/ownerProfileRoutes")
 require("./utils/reminderScheduler");
 
 
@@ -26,8 +27,14 @@ app.use(
 
 app.use("/api/v1/auth",authRoutes)
 app.use("/api/v1/member",memberRoutes)
+app.use("/api/v1/owner",ownerRoutes)
 
 
+
+app.use((req, res, next) => {
+  console.log("👉 Request:", req.method, req.originalUrl);
+  next();
+});
 
 app.listen(process.env.PORT,() =>
 {
