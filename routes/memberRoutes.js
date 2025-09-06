@@ -59,18 +59,17 @@ router.get("/debug/names", auth, isOwner, getAllMemberNames);
 // IMPORTANT: Static routes must come BEFORE dynamic parameter routes
 
 // Add logging middleware for due members routes
-router.use(["/duemembers", "/due-members"], (req, res, next) => {
-  console.log("🌐 Due members route middleware HIT");
-  console.log("📍 Request URL:", req.originalUrl);
-  console.log("🔧 Request method:", req.method);
-  console.log("🍪 Cookies present:", Object.keys(req.cookies || {}));
-  console.log(
-    "🔑 Authorization header:",
-    req.headers.authorization ? "Present" : "Not present"
-  );
+// For /duemembers
+router.use("/duemembers", (req, res, next) => {
+  console.log("🌐 Due members route middleware HIT (/duemembers)");
   next();
 });
 
+// For /due-members
+router.use("/due-members", (req, res, next) => {
+  console.log("🌐 Due members route middleware HIT (/due-members)");
+  next();
+});
 // Get All Due Members - Multiple endpoints for compatibility
 router.get(
   "/duemembers",
