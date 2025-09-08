@@ -10,6 +10,8 @@ const authRoutes = require("./routes/authRoutes");
 const memberRoutes = require("./routes/memberRoutes");
 const ownerRoutes = require("./routes/ownerProfileRoutes");
 const contactRoutes = require("./routes/dashboardRoutes");
+// Route imports - NEW: Payment routes
+const paymentRoutes = require("./routes/paymentRoutes");
 
 // Initialize reminder scheduler
 require("./utils/reminderScheduler");
@@ -32,52 +34,15 @@ app.use(
   })
 );
 
-// // Logging middleware
-// app.use((req, res, next) => {
-//   console.log("Request:", req.method, req.originalUrl);
-//   next();
-// });
+
 
 // Route setup
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/member", memberRoutes);
 app.use("/api/v1/owner", ownerRoutes);
 app.use("/api/v1", contactRoutes);
+app.use("/api/v1/payment", paymentRoutes);
 
-// // Health check endpoint
-// app.get("/health", (req, res) => {
-//   res.status(200).json({
-//     success: true,
-//     message: "Server is running",
-//     timestamp: new Date().toISOString(),
-//     endpoints: {
-//       auth: "/api/v1/auth",
-//       members: "/api/v1/member",
-//       owner: "/api/v1/owner",
-//       contact: "/api/v1/contact"
-//     }
-//   });
-// });
-
-// // Error handling middleware
-// app.use((err, req, res, next) => {
-//   console.error("Error occurred:", err);
-//   res.status(500).json({
-//     success: false,
-//     message: "Internal server error",
-//     error: process.env.NODE_ENV === 'development' ? err.message : undefined
-//   });
-// });
-
-// // 404 handler for undefined routes
-// app.use("*", (req, res) => {
-//   res.status(404).json({
-//     success: false,
-//     message: `Route ${req.originalUrl} not found`
-//   });
-// });
-
-// Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
