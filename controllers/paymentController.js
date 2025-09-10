@@ -1,18 +1,46 @@
+console.log("💳 [DEBUG] PaymentController: Loading payment controller...");
+
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
 const Owner = require("../models/Owner");
-const { mailSender } = require("../utils/mailSender");
-const { 
-  paymentSuccessTemplate, 
-  paymentFailureTemplate, 
-  welcomePremiumTemplate 
-} = require("../templates/paymentTemplate");
 
-// Initialize Razorpay instance
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID, // Add your Razorpay key ID in env
-  key_secret: process.env.RAZORPAY_KEY_SECRET, // Add your Razorpay secret in env
-});
+console.log("💳 [DEBUG] PaymentController: Basic imports loaded");
+
+// Import mail utilities with error handling
+let mailSender, paymentSuccessTemplate, paymentFailureTemplate, welcomePremiumTemplate;
+try {
+  ({ mailSender } = require("../utils/mailSender"));
+  console.log("✅ [DEBUG] PaymentController: mailSender loaded");
+} catch (error) {
+  console.error("❌ [DEBUG] PaymentController: Failed to load mailSender:", error.message);
+}
+
+try {
+  ({ 
+    paymentSuccessTemplate, 
+    paymentFailureTemplate, 
+    welcomePremiumTemplate 
+  } = require("../templates/paymentTemplate"));
+  console.log("✅ [DEBUG] PaymentController: Email templates loaded");
+} catch (error) {
+  console.error("❌ [DEBUG] PaymentController: Failed to load email templates:", error.message);
+}
+
+// Initialize Razorpay instance with debug
+let razorpay;
+try {
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    console.error("❌ [DEBUG] PaymentController: Razorpay keys missing in environment");
+  } else {
+    razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+    console.log("✅ [DEBUG] PaymentController: Razorpay initialized successfully");
+  }
+} catch (error) {
+  console.error("❌ [DEBUG] PaymentController: Failed to initialize Razorpay:", error.message);
+}
 
 // Subscription plans configuration
 const SUBSCRIPTION_PLANS = {
@@ -41,14 +69,24 @@ const SUBSCRIPTION_PLANS = {
   }
 };
 
+console.log("✅ [DEBUG] PaymentController: Subscription plans configured");
+
 // FIXED: Initiate payment process with billing cycle support
 exports.initiatePayment = async (req, res) => {
+  console.log("🎯 [DEBUG] PaymentController: initiatePayment called");
+  console.log("📋 [DEBUG] PaymentController: Request body:", req.body);
+  console.log("👤 [DEBUG] PaymentController: User ID:", req.user?.id);
+  
   try {
-    const { plan, billing = "monthly" } = req.body; // FIXED: Extract billing parameter
+    const { plan, billing = "monthly" } = req.body;
+
+    console.log("🔍 [DEBUG] PaymentController: Extracted plan:", plan, "billing:", billing);
+
     const userId = req.user.id;
 
     // Validate plan
     if (!plan || !SUBSCRIPTION_PLANS[plan]) {
+      console.log("❌ [DEBUG] PaymentController: Invalid plan:", plan);
       return res.status(400).json({
         success: false,
         message: "Invalid subscription plan selected"
@@ -57,23 +95,31 @@ exports.initiatePayment = async (req, res) => {
 
     // Validate billing cycle
     if (!["monthly", "yearly"].includes(billing)) {
+      console.log("❌ [DEBUG] PaymentController: Invalid billing cycle:", billing);
       return res.status(400).json({
         success: false,
         message: "Invalid billing cycle. Must be 'monthly' or 'yearly'"
       });
     }
 
+    console.log("✅ [DEBUG] PaymentController: Validation passed");
+
     // Get user details
+    console.log("🔍 [DEBUG] PaymentController: Finding user with ID:", userId);
     const user = await Owner.findById(userId);
     if (!user) {
+      console.log("❌ [DEBUG] PaymentController: User not found:", userId);
       return res.status(404).json({
         success: false,
         message: "User not found"
       });
     }
 
+    console.log("✅ [DEBUG] PaymentController: User found:", user.email);
+
     // Check if user is already on this plan or higher
     if (user.subscriptionPlan === plan && user.hasActiveSubscription()) {
+      console.log("❌ [DEBUG] PaymentController: User already has active subscription:", plan);
       return res.status(400).json({
         success: false,
         message: `You already have an active ${plan} subscription`
@@ -81,64 +127,84 @@ exports.initiatePayment = async (req, res) => {
     }
 
     const selectedPlan = SUBSCRIPTION_PLANS[plan];
-    const amount = billing === "yearly" ? selectedPlan.yearlyAmount : selectedPlan.monthlyAmount; // FIXED
-    const duration = billing === "yearly" ? selectedPlan.yearlyDuration : selectedPlan.monthlyDuration; // FIXED
+    const amount = billing === "yearly" ? selectedPlan.yearlyAmount : selectedPlan.monthlyAmount;
+    const duration = billing === "yearly" ? selectedPlan.yearlyDuration : selectedPlan.monthlyDuration;
     
+    console.log("💰 [DEBUG] PaymentController: Calculated amount:", amount, "duration:", duration);
+
     // Create Razorpay order
     const orderOptions = {
       amount: amount * 100, // Convert to paise
       currency: selectedPlan.currency,
-      receipt: `order_${userId}_${Date.now()}`,
+      receipt: `ord_${userId.slice(-8)}_${Date.now()}`,
       notes: {
         userId: userId,
         plan: plan,
-        billing: billing, // FIXED: Add billing to notes
+        billing: billing,
         userEmail: user.email,
         userName: `${user.firstName} ${user.lastName}`
       }
     };
 
+    console.log("🔍 [DEBUG] PaymentController: Creating Razorpay order with options:", orderOptions);
+
+    if (!razorpay) {
+      console.error("❌ [DEBUG] PaymentController: Razorpay not initialized");
+      return res.status(500).json({
+        success: false,
+        message: "Payment service not available"
+      });
+    }
+
     const order = await razorpay.orders.create(orderOptions);
 
     if (!order) {
+      console.log("❌ [DEBUG] PaymentController: Failed to create Razorpay order");
       return res.status(500).json({
         success: false,
         message: "Failed to create payment order"
       });
     }
 
+    console.log("✅ [DEBUG] PaymentController: Razorpay order created:", order.id);
+
     // Save order details temporarily
     user.paymentHistory.push({
       orderId: order.id,
-      amount: amount, // FIXED: Use calculated amount
+      amount: amount,
       currency: selectedPlan.currency,
-      billing: billing, // FIXED: Save billing cycle
+      billing: billing,
       status: "PENDING",
       plan: plan
     });
     await user.save();
 
+    console.log("✅ [DEBUG] PaymentController: Payment history updated for user");
+
+    const responseData = {
+      orderId: order.id,
+      amount: amount,
+      currency: selectedPlan.currency,
+      planName: selectedPlan.name,
+      billing: billing,
+      duration: duration,
+      key: process.env.RAZORPAY_KEY_ID,
+      user: {
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        contact: user.mobileNumber
+      }
+    };
+
+    console.log("✅ [DEBUG] PaymentController: Sending successful response");
     return res.status(200).json({
       success: true,
       message: "Payment order created successfully",
-      data: {
-        orderId: order.id,
-        amount: amount, // FIXED: Return calculated amount
-        currency: selectedPlan.currency,
-        planName: selectedPlan.name,
-        billing: billing, // FIXED: Return billing cycle
-        duration: duration, // FIXED: Return duration
-        key: process.env.RAZORPAY_KEY_ID,
-        user: {
-          name: `${user.firstName} ${user.lastName}`,
-          email: user.email,
-          contact: user.mobileNumber
-        }
-      }
+      data: responseData
     });
 
   } catch (error) {
-    console.error("Payment initiation error:", error);
+    console.error("❌ [DEBUG] PaymentController: initiatePayment error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to initiate payment process"
@@ -148,6 +214,9 @@ exports.initiatePayment = async (req, res) => {
 
 // Verify payment and update subscription
 exports.verifyPayment = async (req, res) => {
+  console.log("🎯 [DEBUG] PaymentController: verifyPayment called");
+  console.log("📋 [DEBUG] PaymentController: Request body:", req.body);
+
   try {
     const { 
       razorpay_payment_id, 
@@ -156,11 +225,14 @@ exports.verifyPayment = async (req, res) => {
     } = req.body;
 
     if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+      console.log("❌ [DEBUG] PaymentController: Missing payment verification details");
       return res.status(400).json({
         success: false,
         message: "Missing payment verification details"
       });
     }
+
+    console.log("🔍 [DEBUG] PaymentController: Verifying signature...");
 
     // Create signature for verification
     const body = razorpay_order_id + "|" + razorpay_payment_id;
@@ -171,8 +243,9 @@ exports.verifyPayment = async (req, res) => {
 
     // Verify signature
     if (expectedSignature !== razorpay_signature) {
-      // Payment signature verification failed
-      await this.handlePaymentFailure(razorpay_order_id, "Invalid payment signature");
+      console.log("❌ [DEBUG] PaymentController: Signature verification failed");
+      // FIXED: Use exports instead of this
+      await exports.handlePaymentFailure(razorpay_order_id, "Invalid payment signature");
       
       return res.status(400).json({
         success: false,
@@ -180,14 +253,17 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // Signature verified - process successful payment
-    const result = await this.handlePaymentSuccess(
+    console.log("✅ [DEBUG] PaymentController: Signature verified successfully");
+
+    // FIXED: Use exports instead of this
+    const result = await exports.handlePaymentSuccess(
       razorpay_payment_id, 
       razorpay_order_id, 
       req.user.id
     );
 
     if (result.success) {
+      console.log("✅ [DEBUG] PaymentController: Payment success handled");
       return res.status(200).json({
         success: true,
         message: "Payment verified and subscription activated successfully",
@@ -197,6 +273,7 @@ exports.verifyPayment = async (req, res) => {
         }
       });
     } else {
+      console.log("❌ [DEBUG] PaymentController: Payment success handling failed:", result.message);
       return res.status(500).json({
         success: false,
         message: result.message
@@ -204,7 +281,7 @@ exports.verifyPayment = async (req, res) => {
     }
 
   } catch (error) {
-    console.error("Payment verification error:", error);
+    console.error("❌ [DEBUG] PaymentController: verifyPayment error:", error);
     return res.status(500).json({
       success: false,
       message: "Payment verification failed"
@@ -214,12 +291,18 @@ exports.verifyPayment = async (req, res) => {
 
 // FIXED: Handle successful payment with billing cycle support
 exports.handlePaymentSuccess = async (paymentId, orderId, userId) => {
+  console.log("🎯 [DEBUG] PaymentController: handlePaymentSuccess called");
+  console.log("📋 [DEBUG] PaymentController: paymentId:", paymentId, "orderId:", orderId, "userId:", userId);
+
   try {
     // Find user and the payment record
     const user = await Owner.findById(userId);
     if (!user) {
+      console.log("❌ [DEBUG] PaymentController: User not found in handlePaymentSuccess");
       throw new Error("User not found");
     }
+
+    console.log("✅ [DEBUG] PaymentController: User found for payment success");
 
     // Find the payment record
     const paymentRecord = user.paymentHistory.find(
@@ -227,8 +310,11 @@ exports.handlePaymentSuccess = async (paymentId, orderId, userId) => {
     );
 
     if (!paymentRecord) {
+      console.log("❌ [DEBUG] PaymentController: Payment record not found for order:", orderId);
       throw new Error("Payment record not found");
     }
+
+    console.log("✅ [DEBUG] PaymentController: Payment record found:", paymentRecord.plan, paymentRecord.billing);
 
     // Calculate subscription expiry date based on billing cycle
     const plan = paymentRecord.plan;
@@ -236,12 +322,15 @@ exports.handlePaymentSuccess = async (paymentId, orderId, userId) => {
     const selectedPlan = SUBSCRIPTION_PLANS[plan];
     
     if (!selectedPlan) {
+      console.log("❌ [DEBUG] PaymentController: Invalid subscription plan:", plan);
       throw new Error("Invalid subscription plan");
     }
 
-    const duration = billing === "yearly" ? selectedPlan.yearlyDuration : selectedPlan.monthlyDuration; // FIXED
+    const duration = billing === "yearly" ? selectedPlan.yearlyDuration : selectedPlan.monthlyDuration;
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + duration);
+
+    console.log("📅 [DEBUG] PaymentController: Calculated expiry date:", expiryDate);
 
     // Update user subscription
     user.subscriptionPlan = plan;
@@ -253,34 +342,41 @@ exports.handlePaymentSuccess = async (paymentId, orderId, userId) => {
 
     await user.save();
 
-    // Send success email
-    try {
-      const planName = selectedPlan.name;
-      const amount = billing === "yearly" ? selectedPlan.yearlyAmount : selectedPlan.monthlyAmount; // FIXED
-      
-      await mailSender(
-        user.email,
-        `Payment Successful - ${planName}`,
-        paymentSuccessTemplate(
-          `${user.firstName} ${user.lastName}`,
-          `${planName} (${billing === "yearly" ? "Yearly" : "Monthly"})`,
-          amount,
-          orderId,
-          expiryDate
-        )
-      );
+    console.log("✅ [DEBUG] PaymentController: User subscription updated successfully");
 
-      // Send welcome email
-      await mailSender(
-        user.email,
-        `Welcome to ${planName} - Iron Throne Gym`,
-        welcomePremiumTemplate(`${user.firstName} ${user.lastName}`, planName)
-      );
-    } catch (emailError) {
-      console.error("Email sending error:", emailError);
+    // Send success email
+    if (mailSender && paymentSuccessTemplate && welcomePremiumTemplate) {
+      try {
+        const planName = selectedPlan.name;
+        const amount = billing === "yearly" ? selectedPlan.yearlyAmount : selectedPlan.monthlyAmount;
+        
+        await mailSender(
+          user.email,
+          `Payment Successful - ${planName}`,
+          paymentSuccessTemplate(
+            `${user.firstName} ${user.lastName}`,
+            `${planName} (${billing === "yearly" ? "Yearly" : "Monthly"})`,
+            amount,
+            orderId,
+            expiryDate
+          )
+        );
+
+        await mailSender(
+          user.email,
+          `Welcome to ${planName} - Iron Throne Gym`,
+          welcomePremiumTemplate(`${user.firstName} ${user.lastName}`, planName)
+        );
+
+        console.log("✅ [DEBUG] PaymentController: Success emails sent");
+      } catch (emailError) {
+        console.error("❌ [DEBUG] PaymentController: Email sending error:", emailError);
+      }
+    } else {
+      console.log("⚠️ [DEBUG] PaymentController: Email services not available, skipping emails");
     }
 
-    return {
+    const result = {
       success: true,
       user: {
         id: user._id,
@@ -293,8 +389,11 @@ exports.handlePaymentSuccess = async (paymentId, orderId, userId) => {
       subscription: user.getSubscriptionStatus()
     };
 
+    console.log("✅ [DEBUG] PaymentController: Returning success result");
+    return result;
+
   } catch (error) {
-    console.error("Payment success handling error:", error);
+    console.error("❌ [DEBUG] PaymentController: handlePaymentSuccess error:", error);
     return {
       success: false,
       message: error.message
@@ -304,6 +403,9 @@ exports.handlePaymentSuccess = async (paymentId, orderId, userId) => {
 
 // FIXED: Handle failed payment with billing cycle support
 exports.handlePaymentFailure = async (orderId, reason = "Payment processing failed") => {
+  console.log("🎯 [DEBUG] PaymentController: handlePaymentFailure called");
+  console.log("📋 [DEBUG] PaymentController: orderId:", orderId, "reason:", reason);
+
   try {
     // Find user with this order
     const user = await Owner.findOne({
@@ -311,9 +413,11 @@ exports.handlePaymentFailure = async (orderId, reason = "Payment processing fail
     });
 
     if (!user) {
-      console.error("User not found for failed payment:", orderId);
+      console.error("❌ [DEBUG] PaymentController: User not found for failed payment:", orderId);
       return { success: false, message: "User not found" };
     }
+
+    console.log("✅ [DEBUG] PaymentController: User found for payment failure");
 
     // Find and update payment record
     const paymentRecord = user.paymentHistory.find(
@@ -324,53 +428,65 @@ exports.handlePaymentFailure = async (orderId, reason = "Payment processing fail
       paymentRecord.status = "FAILED";
       await user.save();
 
+      console.log("✅ [DEBUG] PaymentController: Payment record marked as failed");
+
       // Send failure email
-      try {
-        const selectedPlan = SUBSCRIPTION_PLANS[paymentRecord.plan];
-        const planName = selectedPlan?.name || "Subscription Plan";
-        const billing = paymentRecord.billing || "monthly";
-        const amount = billing === "yearly" ? selectedPlan?.yearlyAmount : selectedPlan?.monthlyAmount || 0; // FIXED
-        
-        await mailSender(
-          user.email,
-          `Payment Failed - ${planName}`,
-          paymentFailureTemplate(
-            `${user.firstName} ${user.lastName}`,
-            `${planName} (${billing === "yearly" ? "Yearly" : "Monthly"})`,
-            amount,
-            orderId,
-            reason
-          )
-        );
-      } catch (emailError) {
-        console.error("Failure email sending error:", emailError);
+      if (mailSender && paymentFailureTemplate) {
+        try {
+          const selectedPlan = SUBSCRIPTION_PLANS[paymentRecord.plan];
+          const planName = selectedPlan?.name || "Subscription Plan";
+          const billing = paymentRecord.billing || "monthly";
+          const amount = billing === "yearly" ? selectedPlan?.yearlyAmount : selectedPlan?.monthlyAmount || 0;
+          
+          await mailSender(
+            user.email,
+            `Payment Failed - ${planName}`,
+            paymentFailureTemplate(
+              `${user.firstName} ${user.lastName}`,
+              `${planName} (${billing === "yearly" ? "Yearly" : "Monthly"})`,
+              amount,
+              orderId,
+              reason
+            )
+          );
+
+          console.log("✅ [DEBUG] PaymentController: Failure email sent");
+        } catch (emailError) {
+          console.error("❌ [DEBUG] PaymentController: Failure email error:", emailError);
+        }
+      } else {
+        console.log("⚠️ [DEBUG] PaymentController: Email services not available for failure notification");
       }
     }
 
     return { success: true, message: "Payment failure handled" };
 
   } catch (error) {
-    console.error("Payment failure handling error:", error);
+    console.error("❌ [DEBUG] PaymentController: handlePaymentFailure error:", error);
     return { success: false, message: error.message };
   }
 };
 
-// FIXED: Get subscription plans with correct field names
+// Get subscription plans
 exports.getSubscriptionPlans = async (req, res) => {
+  console.log("🎯 [DEBUG] PaymentController: getSubscriptionPlans called");
+
   try {
     const plans = Object.keys(SUBSCRIPTION_PLANS).map(key => ({
       id: key,
       name: SUBSCRIPTION_PLANS[key].name,
       tagline: SUBSCRIPTION_PLANS[key].tagline,
       description: SUBSCRIPTION_PLANS[key].description,
-      monthlyAmount: SUBSCRIPTION_PLANS[key].monthlyAmount, // FIXED
-      yearlyAmount: SUBSCRIPTION_PLANS[key].yearlyAmount, // FIXED
+      monthlyAmount: SUBSCRIPTION_PLANS[key].monthlyAmount,
+      yearlyAmount: SUBSCRIPTION_PLANS[key].yearlyAmount,
       currency: SUBSCRIPTION_PLANS[key].currency,
-      monthlyDuration: SUBSCRIPTION_PLANS[key].monthlyDuration, // FIXED
-      yearlyDuration: SUBSCRIPTION_PLANS[key].yearlyDuration, // FIXED
-      features: SUBSCRIPTION_PLANS[key].features, // FIXED: Use direct access
+      monthlyDuration: SUBSCRIPTION_PLANS[key].monthlyDuration,
+      yearlyDuration: SUBSCRIPTION_PLANS[key].yearlyDuration,
+      features: SUBSCRIPTION_PLANS[key].features,
       savings: SUBSCRIPTION_PLANS[key].savings
     }));
+
+    console.log("✅ [DEBUG] PaymentController: Returning subscription plans:", plans.length);
 
     return res.status(200).json({
       success: true,
@@ -381,7 +497,7 @@ exports.getSubscriptionPlans = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Get plans error:", error);
+    console.error("❌ [DEBUG] PaymentController: getSubscriptionPlans error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to retrieve subscription plans"
@@ -391,19 +507,27 @@ exports.getSubscriptionPlans = async (req, res) => {
 
 // Get user's subscription status
 exports.getSubscriptionStatus = async (req, res) => {
+  console.log("🎯 [DEBUG] PaymentController: getSubscriptionStatus called");
+  console.log("👤 [DEBUG] PaymentController: User ID:", req.user?.id);
+
   try {
     const userId = req.user.id;
     const user = await Owner.findById(userId);
 
     if (!user) {
+      console.log("❌ [DEBUG] PaymentController: User not found for subscription status");
       return res.status(404).json({
         success: false,
         message: "User not found"
       });
     }
 
+    console.log("✅ [DEBUG] PaymentController: User found, getting subscription status");
+
     const subscriptionStatus = user.getSubscriptionStatus();
     
+    console.log("📋 [DEBUG] PaymentController: Subscription status:", subscriptionStatus);
+
     return res.status(200).json({
       success: true,
       message: "Subscription status retrieved successfully",
@@ -413,7 +537,7 @@ exports.getSubscriptionStatus = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Get subscription status error:", error);
+    console.error("❌ [DEBUG] PaymentController: getSubscriptionStatus error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to retrieve subscription status"
@@ -423,6 +547,9 @@ exports.getSubscriptionStatus = async (req, res) => {
 
 // Webhook for Razorpay events
 exports.webhookHandler = async (req, res) => {
+  console.log("🎯 [DEBUG] PaymentController: webhookHandler called");
+  console.log("📋 [DEBUG] PaymentController: Webhook body:", req.body);
+
   try {
     const webhookSignature = req.headers['x-razorpay-signature'];
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -434,6 +561,7 @@ exports.webhookHandler = async (req, res) => {
         .digest('hex');
 
       if (expectedSignature !== webhookSignature) {
+        console.log("❌ [DEBUG] PaymentController: Invalid webhook signature");
         return res.status(400).json({
           success: false,
           message: "Invalid webhook signature"
@@ -444,28 +572,34 @@ exports.webhookHandler = async (req, res) => {
     const event = req.body.event;
     const paymentEntity = req.body.payload.payment.entity;
     
+    console.log("🔍 [DEBUG] PaymentController: Processing webhook event:", event);
+
     switch (event) {
       case 'payment.captured':
-        console.log("Payment captured:", paymentEntity.id);
+        console.log("✅ [DEBUG] PaymentController: Payment captured:", paymentEntity.id);
         break;
         
       case 'payment.failed':
-        await this.handlePaymentFailure(
+        console.log("❌ [DEBUG] PaymentController: Payment failed webhook");
+        // FIXED: Use exports instead of this
+        await exports.handlePaymentFailure(
           paymentEntity.order_id, 
           paymentEntity.error_description || "Payment failed"
         );
         break;
         
       default:
-        console.log("Unhandled webhook event:", event);
+        console.log("ℹ️ [DEBUG] PaymentController: Unhandled webhook event:", event);
     }
 
     return res.status(200).json({ status: "ok" });
   } catch (error) {
-    console.error("Webhook handling error:", error);
+    console.error("❌ [DEBUG] PaymentController: webhookHandler error:", error);
     return res.status(500).json({
       success: false,
       message: "Webhook processing failed"
     });
   }
 };
+
+console.log("✅ [DEBUG] PaymentController: All exports defined successfully");
