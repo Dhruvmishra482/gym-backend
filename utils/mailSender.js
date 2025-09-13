@@ -1,11 +1,9 @@
-
-
-// module.exports = { mailSender };
 const nodemailer = require('nodemailer');
 
 const mailSender = async (to, subject, html) => {
   try {
-    const transporter = nodemailer.createTransporter({
+    // Fixed: Changed createTransporter to createTransport
+    const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: process.env.MAIL_USER, // dhruvmishra3828@gmail.com
