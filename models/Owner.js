@@ -50,6 +50,37 @@ const ownerSchema = new mongoose.Schema(
             type: Date,
             default: null,
         },
+        
+        // NEW: CUSTOM BILLING CYCLE TRACKING
+        billingCycle: {
+            startDate: {
+                type: Date,
+                default: Date.now
+            },
+            nextResetDate: {
+                type: Date,
+                default: function() {
+                    // Default to 30 days from subscription start
+                    return new Date(Date.now() + (30 * 24 * 60 * 60 * 1000));
+                }
+            },
+            billingDay: {
+                type: Number,
+                default: function() {
+                    return new Date().getDate(); // Day of month when user subscribed
+                }
+            },
+            lastResetDate: {
+                type: Date,
+                default: Date.now
+            },
+            cycleType: {
+                type: String,
+                enum: ["monthly", "yearly"],
+                default: "monthly"
+            }
+        },
+        
         // EXISTING PAYMENT HISTORY
         paymentHistory: [{
             orderId: String,
@@ -72,7 +103,7 @@ const ownerSchema = new mongoose.Schema(
             }
         }],
         
-        // NEW: USAGE TRACKING FIELDS
+        // UPDATED: USAGE TRACKING FIELDS
         usageStats: {
             membersCount: {
                 type: Number,
@@ -96,8 +127,11 @@ const ownerSchema = new mongoose.Schema(
                     lastUsed: { type: Date }
                 }
             },
+            // UPDATED: Monthly stats now tracks billing cycles
             monthlyStats: [{
-                month: String, // Format: "2025-09"
+                cycleId: String, // Format: "2025-01-15_2025-02-15"
+                cycleStart: Date,
+                cycleEnd: Date,
                 membersAdded: { type: Number, default: 0 },
                 featuresUsed: {
                     whatsappReminders: { type: Number, default: 0 },
@@ -107,7 +141,7 @@ const ownerSchema = new mongoose.Schema(
             }]
         },
         
-        // NEW: NOTIFICATION TRACKING
+        // EXISTING NOTIFICATION TRACKING
         notificationSettings: {
             expiryReminders: {
                 enabled: { type: Boolean, default: true },
@@ -148,27 +182,78 @@ ownerSchema.methods.getSubscriptionStatus = function() {
     };
 };
 
-// NEW METHODS - USAGE TRACKING
+// NEW BILLING CYCLE METHODS
+ownerSchema.methods.calculateNextResetDate = function(billingType = "monthly") {
+    const startDate = this.billingCycle.startDate || new Date();
+    const nextReset = new Date(startDate);
+    
+    if (billingType === "yearly") {
+        nextReset.setFullYear(startDate.getFullYear() + 1);
+    } else {
+        // Monthly billing - add 30 days from start date
+        nextReset.setDate(startDate.getDate() + 30);
+    }
+    
+    return nextReset;
+};
+
+ownerSchema.methods.shouldResetUsage = function() {
+    const now = new Date();
+    return now >= this.billingCycle.nextResetDate;
+};
+
+ownerSchema.methods.initializeBillingCycle = function(billingType = "monthly") {
+    const now = new Date();
+    this.billingCycle.startDate = now;
+    this.billingCycle.lastResetDate = now;
+    this.billingCycle.billingDay = now.getDate();
+    this.billingCycle.cycleType = billingType;
+    this.billingCycle.nextResetDate = this.calculateNextResetDate(billingType);
+};
+
+ownerSchema.methods.resetUsageCycle = function() {
+    const now = new Date();
+    const oldResetDate = this.billingCycle.nextResetDate;
+    
+    // Store current cycle data in history
+    const cycleId = `${this.billingCycle.lastResetDate.toISOString().substring(0, 10)}_${oldResetDate.toISOString().substring(0, 10)}`;
+    
+    this.usageStats.monthlyStats.push({
+        cycleId: cycleId,
+        cycleStart: this.billingCycle.lastResetDate,
+        cycleEnd: oldResetDate,
+        membersAdded: this.usageStats.membersCount,
+        featuresUsed: {
+            whatsappReminders: this.usageStats.featureUsage.whatsappReminders.count,
+            analyticsViews: this.usageStats.featureUsage.analyticsViews.count,
+            searchQueries: this.usageStats.featureUsage.searchQueries.count
+        }
+    });
+    
+    // Keep only last 12 cycles
+    this.usageStats.monthlyStats = this.usageStats.monthlyStats
+        .sort((a, b) => new Date(b.cycleStart) - new Date(a.cycleStart))
+        .slice(0, 12);
+    
+    // Reset usage counters
+    this.usageStats.featureUsage.whatsappReminders.count = 0;
+    this.usageStats.featureUsage.analyticsViews.count = 0;
+    this.usageStats.featureUsage.searchQueries.count = 0;
+    
+    // Update billing cycle dates
+    this.billingCycle.lastResetDate = oldResetDate;
+    this.billingCycle.nextResetDate = this.calculateNextResetDate(this.billingCycle.cycleType);
+};
+
+// UPDATED METHODS - BILLING CYCLE AWARE
 ownerSchema.methods.incrementMemberCount = async function() {
     this.usageStats.membersCount += 1;
     this.usageStats.lastMemberCountUpdate = new Date();
     
-    // Update monthly stats
-    const currentMonth = new Date().toISOString().substring(0, 7); // "2025-09"
-    let monthlyRecord = this.usageStats.monthlyStats.find(stat => stat.month === currentMonth);
-    
-    if (!monthlyRecord) {
-        this.usageStats.monthlyStats.push({
-            month: currentMonth,
-            membersAdded: 1,
-            featuresUsed: {
-                whatsappReminders: 0,
-                analyticsViews: 0,
-                searchQueries: 0
-            }
-        });
-    } else {
-        monthlyRecord.membersAdded += 1;
+    // Update current cycle stats if exists
+    const currentCycle = this.usageStats.monthlyStats[this.usageStats.monthlyStats.length - 1];
+    if (currentCycle && currentCycle.cycleEnd > new Date()) {
+        currentCycle.membersAdded += 1;
     }
     
     return await this.save();
@@ -190,29 +275,16 @@ ownerSchema.methods.trackFeatureUsage = async function(featureName) {
     this.usageStats.featureUsage[featureName].count += 1;
     this.usageStats.featureUsage[featureName].lastUsed = new Date();
     
-    // Update monthly stats
-    const currentMonth = new Date().toISOString().substring(0, 7);
-    let monthlyRecord = this.usageStats.monthlyStats.find(stat => stat.month === currentMonth);
-    
-    if (!monthlyRecord) {
-        const newRecord = {
-            month: currentMonth,
-            membersAdded: 0,
-            featuresUsed: {
-                whatsappReminders: 0,
-                analyticsViews: 0,
-                searchQueries: 0
-            }
-        };
-        newRecord.featuresUsed[featureName] = 1;
-        this.usageStats.monthlyStats.push(newRecord);
-    } else {
-        monthlyRecord.featuresUsed[featureName] += 1;
+    // Update current cycle stats if exists
+    const currentCycle = this.usageStats.monthlyStats[this.usageStats.monthlyStats.length - 1];
+    if (currentCycle && currentCycle.cycleEnd > new Date()) {
+        currentCycle.featuresUsed[featureName] += 1;
     }
     
     return await this.save();
 };
 
+// EXISTING METHODS - UNCHANGED
 ownerSchema.methods.getPlanLimits = function() {
     const planLimits = {
         NONE: {
@@ -300,6 +372,22 @@ ownerSchema.methods.getUsagePercentage = function(type) {
     }
     
     return Math.min((current / limits[type]) * 100, 100);
+};
+
+// NEW: Billing cycle status
+ownerSchema.methods.getBillingCycleStatus = function() {
+    const now = new Date();
+    const daysUntilReset = Math.ceil((this.billingCycle.nextResetDate - now) / (1000 * 60 * 60 * 24));
+    const totalCycleDays = this.billingCycle.cycleType === "yearly" ? 365 : 30;
+    const daysSinceReset = totalCycleDays - daysUntilReset;
+    
+    return {
+        nextResetDate: this.billingCycle.nextResetDate,
+        daysUntilReset: Math.max(daysUntilReset, 0),
+        cycleProgress: Math.min((daysSinceReset / totalCycleDays) * 100, 100),
+        cycleType: this.billingCycle.cycleType,
+        shouldReset: this.shouldResetUsage()
+    };
 };
 
 module.exports = mongoose.model("Owner", ownerSchema);

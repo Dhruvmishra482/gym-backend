@@ -299,6 +299,8 @@ const sendWhatsapp = async (toNumber, message) => {
   }
 };
 
+
+
 // Export both the function and a simplified test function
 module.exports = {
   sendWhatsapp,

@@ -1,9 +1,10 @@
-
+const Owner= require("../models/Owner")
 const Member = require("../models/Member");
 const { sendWhatsapp, testTwilioSetup } = require('../utils/sendWhatsapp');
 
 // SECURITY FIX: Add Member with owner isolation
-exports.addMember = async (req, res) => {
+// In addMember controller - modify to track immediately
+exports.addMember = async (req, res, next) => {
   try {
     const {
       name,
@@ -20,10 +21,9 @@ exports.addMember = async (req, res) => {
       address,
     } = req.body;
 
-    // SECURITY FIX: Check if member exists for THIS owner only
     const existingMember = await Member.findOne({ 
       phoneNo: phoneNo,
-      ownerId: req.user.id // Only check within this owner's members
+      ownerId: req.user.id
     });
     
     if (existingMember) {
@@ -33,9 +33,8 @@ exports.addMember = async (req, res) => {
       });
     }
 
-    // SECURITY FIX: Create member with owner reference
     const member = await Member.create({
-      ownerId: req.user.id, // Add owner reference
+      ownerId: req.user.id,
       name,
       phoneNo,
       email,
@@ -50,11 +49,19 @@ exports.addMember = async (req, res) => {
       address,
     });
 
+    // TRACK MEMBER ADDITION IMMEDIATELY (not in middleware)
+    const owner = await Owner.findById(req.user.id);
+    if (owner) {
+      await owner.incrementMemberCount();
+      console.log("✅ Member count updated to:", owner.usageStats.membersCount);
+    }
+
     res.status(201).json({
       success: true,
       message: "New member added successfully",
       data: member,
     });
+    
   } catch (error) {
     console.error(error);
     res.status(500).json({ 
@@ -418,7 +425,123 @@ exports.getAllDueMembers = async (req, res) => {
   }
 };
 
-// SECURITY FIX: Send Member Reminder (owner-specific)
+// // SECURITY FIX: Send Member Reminder (owner-specific)
+// const sendMemberReminder = async (req, res) => {
+//   try {
+//     const { memberId } = req.params;
+
+//     console.log(`📧 Sending reminder to member ID: ${memberId}`);
+
+//     // Test Twilio setup first
+//     const twilioTest = await testTwilioSetup();
+//     if (!twilioTest.success) {
+//       console.error('❌ Twilio setup test failed:', twilioTest.error);
+//       return res.status(503).json({
+//         success: false,
+//         message: 'WhatsApp service unavailable. Please contact administrator.',
+//         error: 'Service configuration error'
+//       });
+//     }
+
+//     // SECURITY FIX: Find the member only within this owner's gym
+//     const member = await Member.findOne({
+//       _id: memberId,
+//       ownerId: req.user.id
+//     });
+
+//     if (!member) {
+//       console.log(`❌ Member not found with ID: ${memberId} in your gym`);
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Member not found in your gym'
+//       });
+//     }
+
+//     // Check if member has phone number
+//     if (!member.phoneNo) {
+//       console.log(`❌ Member ${member.name} has no phone number`);
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Member phone number not found'
+//       });
+//     }
+
+//     // Calculate overdue days if applicable
+//     const today = new Date();
+//     const dueDate = new Date(member.nextDueDate);
+//     const timeDiff = today.getTime() - dueDate.getTime();
+//     const overdueDays = Math.max(0, Math.ceil(timeDiff / (1000 * 60 * 60 * 24)));
+
+//     // Create reminder message
+//     let message;
+//     if (overdueDays > 0) {
+//       message = `Hi ${member.name}, your gym fees of ₹${member.feesAmount || 'pending amount'} is overdue by ${overdueDays} days. Please make the payment at your earliest convenience. Thank you!`;
+//     } else {
+//       message = `Hi ${member.name}, your gym fees of ₹${member.feesAmount || 'pending amount'} is due today. Please make the payment. Thank you!`;
+//     }
+
+//     console.log(`📱 Preparing to send WhatsApp to ${member.phoneNo}`);
+
+//     try {
+//       // Send WhatsApp message to member
+//       const result = await sendWhatsapp(member.phoneNo, message);
+
+//       console.log(`✅ WhatsApp sent successfully:`, result);
+
+//       // Update member record with reminder sent timestamp
+//       await Member.findOneAndUpdate(
+//         { _id: memberId, ownerId: req.user.id },
+//         { lastReminderSent: new Date() }
+//       );
+
+//       console.log(`✅ Reminder sent successfully to member: ${member.name}`);
+
+//       res.json({
+//         success: true,
+//         message: 'Reminder sent successfully via WhatsApp',
+//         data: {
+//           memberId: member._id,
+//           memberName: member.name,
+//           phoneNo: member.phoneNo,
+//           sentAt: new Date(),
+//           whatsappSid: result.sid
+//         }
+//       });
+
+//     } catch (whatsappError) {
+//       console.error('❌ WhatsApp sending failed:', whatsappError);
+
+//       // Handle different types of WhatsApp errors
+//       let errorMessage = 'Failed to send WhatsApp reminder';
+//       let statusCode = 500;
+
+//       if (whatsappError.isAuthError) {
+//         errorMessage = 'WhatsApp service authentication error. Please contact administrator.';
+//         statusCode = 503;
+//       } else if (whatsappError.isPhoneNumberError) {
+//         errorMessage = `Invalid or unverified phone number: ${member.phoneNo}`;
+//         statusCode = 400;
+//       } else if (whatsappError.twilioCode) {
+//         errorMessage = `WhatsApp service error: ${whatsappError.twilioMessage}`;
+//       }
+
+//       return res.status(statusCode).json({
+//         success: false,
+//         message: errorMessage,
+//         error: process.env.NODE_ENV === 'development' ? whatsappError.message : 'WhatsApp service error'
+//       });
+//     }
+
+//   } catch (error) {
+//     console.error('❌ Error in sendMemberReminder:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to send reminder',
+//       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+//     });
+//   }
+// };
+// SECURITY FIX: Send Member Reminder (owner-specific) with WhatsApp Usage Tracking
 const sendMemberReminder = async (req, res) => {
   try {
     const { memberId } = req.params;
@@ -481,6 +604,16 @@ const sendMemberReminder = async (req, res) => {
 
       console.log(`✅ WhatsApp sent successfully:`, result);
 
+      // TRACK WHATSAPP USAGE DIRECTLY (instead of relying on middleware)
+      const owner = await Owner.findById(req.user.id);
+      if (owner) {
+        await owner.trackFeatureUsage('whatsappReminders');
+        console.log(`📊 WhatsApp reminder usage tracked for owner: ${owner.email}`);
+        console.log(`📈 Current WhatsApp usage: ${owner.usageStats.featureUsage.whatsappReminders.count + 1}`);
+      } else {
+        console.error('❌ Owner not found for usage tracking');
+      }
+
       // Update member record with reminder sent timestamp
       await Member.findOneAndUpdate(
         { _id: memberId, ownerId: req.user.id },
@@ -497,7 +630,8 @@ const sendMemberReminder = async (req, res) => {
           memberName: member.name,
           phoneNo: member.phoneNo,
           sentAt: new Date(),
-          whatsappSid: result.sid
+          whatsappSid: result.sid,
+          usageTracked: true
         }
       });
 
@@ -534,7 +668,6 @@ const sendMemberReminder = async (req, res) => {
     });
   }
 };
-
 // SECURITY FIX: Get detailed member information (owner-specific)
 const getMemberDetails = async (req, res) => {
   try {
@@ -597,137 +730,302 @@ const getMemberDetails = async (req, res) => {
   }
 };
 
-// SECURITY FIX: Send reminders to all due members (bulk operation, owner-specific)
+// // SECURITY FIX: Send reminders to all due members (bulk operation, owner-specific)
+// const sendAllMemberReminders = async (req, res) => {
+//   try {
+//     console.log(`📧 Starting bulk reminder sending process for owner: ${req.user.id}`);
+
+//     const today = new Date();
+//     today.setHours(0, 0, 0, 0);
+
+//     // SECURITY FIX: Find all due members for THIS owner only
+//     const query = {
+//       ownerId: req.user.id, // Add owner filter
+//       $and: [
+//         {
+//           $or: [
+//             { nextDueDate: { $lte: today } },
+//             { paymentStatus: "Pending" }
+//           ]
+//         },
+//         { nextDueDate: { $exists: true, $ne: null } },
+//         { phoneNo: { $exists: true, $ne: null, $ne: "" } } // Only members with phone numbers
+//       ]
+//     };
+
+//     const dueMembers = await Member.find(query);
+
+//     console.log(`📊 Found ${dueMembers.length} due members with phone numbers in your gym`);
+
+//     if (dueMembers.length === 0) {
+//       return res.json({
+//         success: true,
+//         message: 'No due members found with phone numbers in your gym',
+//         data: {
+//           totalMembers: 0,
+//           successful: 0,
+//           failed: 0,
+//           results: []
+//         }
+//       });
+//     }
+
+//     const results = [];
+//     let successful = 0;
+//     let failed = 0;
+
+//     // Send reminders to all due members
+//     for (const member of dueMembers) {
+//       try {
+//         // Calculate overdue days
+//         const dueDate = new Date(member.nextDueDate);
+//         const timeDiff = today.getTime() - dueDate.getTime();
+//         const overdueDays = Math.max(0, Math.ceil(timeDiff / (1000 * 60 * 60 * 24)));
+
+//         // Create reminder message
+//         let message;
+//         if (overdueDays > 0) {
+//           message = `Hi ${member.name}, your gym fees of ₹${member.feesAmount || 0} is overdue by ${overdueDays} days. Please make the payment at your earliest convenience. Thank you!`;
+//         } else {
+//           message = `Hi ${member.name}, your gym fees of ₹${member.feesAmount || 0} is due today. Please make the payment. Thank you!`;
+//         }
+
+//         // Send WhatsApp message
+//         await sendWhatsapp(member.phoneNo, message);
+
+//         // Update member record
+//         await Member.findOneAndUpdate(
+//           { _id: member._id, ownerId: req.user.id },
+//           { lastReminderSent: new Date() }
+//         );
+
+//         console.log(`✅ Reminder sent to: ${member.name}`);
+//         results.push({
+//           memberId: member._id,
+//           memberName: member.name,
+//           phoneNo: member.phoneNo,
+//           status: 'success',
+//           sentAt: new Date()
+//         });
+//         successful++;
+
+//       } catch (error) {
+//         console.error(`❌ Failed to send reminder to ${member.name}:`, error);
+//         results.push({
+//           memberId: member._id,
+//           memberName: member.name,
+//           status: 'failed',
+//           error: error.message
+//         });
+//         failed++;
+//       }
+//     }
+
+//     // Send summary to owner
+//     if (process.env.OWNER_PHONE && successful > 0) {
+//       try {
+//         const summaryMessage = `Bulk reminders sent: ${successful} successful, ${failed} failed out of ${dueMembers.length} due members.`;
+//         await sendWhatsapp(process.env.OWNER_PHONE, summaryMessage);
+//         console.log(`📱 Summary sent to owner`);
+//       } catch (error) {
+//         console.error('Error sending summary to owner:', error);
+//       }
+//     }
+
+//     console.log(`✅ Bulk reminder process completed - Success: ${successful}, Failed: ${failed}`);
+
+//     res.json({
+//       success: true,
+//       message: `Reminders sent to ${successful} members successfully`,
+//       data: {
+//         totalMembers: dueMembers.length,
+//         successful,
+//         failed,
+//         results
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error('❌ Error in bulk reminder sending:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to send bulk reminders',
+//       error: error.message,
+//       data: {
+//         totalMembers: 0,
+//         successful: 0,
+//         failed: 0,
+//         results: []
+//       }
+//     });
+//   }
+// };
+// SECURITY FIX: Send All Member Reminders (bulk) with WhatsApp Usage Tracking
 const sendAllMemberReminders = async (req, res) => {
   try {
-    console.log(`📧 Starting bulk reminder sending process for owner: ${req.user.id}`);
+    const ownerId = req.user.id;
+    
+    console.log(`📧 Starting bulk reminder sending process for owner: ${ownerId}`);
 
+    // Test Twilio setup first
+    const twilioTest = await testTwilioSetup();
+    if (!twilioTest.success) {
+      console.error('❌ Twilio setup test failed:', twilioTest.error);
+      return res.status(503).json({
+        success: false,
+        message: 'WhatsApp service unavailable. Please contact administrator.',
+        error: 'Service configuration error'
+      });
+    }
+
+    // Get today's date for comparison
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // SECURITY FIX: Find all due members for THIS owner only
-    const query = {
-      ownerId: req.user.id, // Add owner filter
-      $and: [
-        {
-          $or: [
-            { nextDueDate: { $lte: today } },
-            { paymentStatus: "Pending" }
-          ]
-        },
-        { nextDueDate: { $exists: true, $ne: null } },
-        { phoneNo: { $exists: true, $ne: null, $ne: "" } } // Only members with phone numbers
-      ]
-    };
-
-    const dueMembers = await Member.find(query);
-
-    console.log(`📊 Found ${dueMembers.length} due members with phone numbers in your gym`);
+    // SECURITY FIX: Find due members only for this owner
+    const dueMembers = await Member.find({
+      ownerId: ownerId,
+      nextDueDate: { $lte: today },
+      phoneNo: { $exists: true, $ne: "" } // Only members with phone numbers
+    });
 
     if (dueMembers.length === 0) {
-      return res.json({
+      console.log(`📊 No due members found with phone numbers in your gym`);
+      return res.status(200).json({
         success: true,
-        message: 'No due members found with phone numbers in your gym',
-        data: {
-          totalMembers: 0,
-          successful: 0,
+        message: 'No due members found with phone numbers',
+        data: { 
+          total: 0, 
+          successful: 0, 
           failed: 0,
-          results: []
+          members: []
         }
       });
     }
 
+    console.log(`📊 Found ${dueMembers.length} due members with phone numbers in your gym`);
+
     const results = [];
-    let successful = 0;
-    let failed = 0;
+    let successCount = 0;
+    let failureCount = 0;
 
     // Send reminders to all due members
     for (const member of dueMembers) {
       try {
         // Calculate overdue days
-        const dueDate = new Date(member.nextDueDate);
-        const timeDiff = today.getTime() - dueDate.getTime();
+        const memberDueDate = new Date(member.nextDueDate);
+        memberDueDate.setHours(0, 0, 0, 0);
+        
+        const timeDiff = today.getTime() - memberDueDate.getTime();
         const overdueDays = Math.max(0, Math.ceil(timeDiff / (1000 * 60 * 60 * 24)));
 
-        // Create reminder message
+        // Create personalized message
         let message;
         if (overdueDays > 0) {
-          message = `Hi ${member.name}, your gym fees of ₹${member.feesAmount || 0} is overdue by ${overdueDays} days. Please make the payment at your earliest convenience. Thank you!`;
+          message = `Hi ${member.name}, your gym fees of ₹${member.feesAmount || 'pending amount'} is overdue by ${overdueDays} days. Please make the payment at your earliest convenience. Thank you!`;
         } else {
-          message = `Hi ${member.name}, your gym fees of ₹${member.feesAmount || 0} is due today. Please make the payment. Thank you!`;
+          message = `Hi ${member.name}, your gym fees of ₹${member.feesAmount || 'pending amount'} is due today. Please make the payment. Thank you!`;
         }
 
-        // Send WhatsApp message
-        await sendWhatsapp(member.phoneNo, message);
+        console.log(`📱 Sending reminder to: ${member.name} (${member.phoneNo})`);
 
-        // Update member record
-        await Member.findOneAndUpdate(
-          { _id: member._id, ownerId: req.user.id },
-          { lastReminderSent: new Date() }
-        );
+        // Send WhatsApp message
+        const result = await sendWhatsapp(member.phoneNo, message);
 
         console.log(`✅ Reminder sent to: ${member.name}`);
+
+        // Update member with last reminder sent timestamp
+        await Member.findByIdAndUpdate(member._id, {
+          lastReminderSent: new Date()
+        });
+
         results.push({
           memberId: member._id,
           memberName: member.name,
           phoneNo: member.phoneNo,
           status: 'success',
+          whatsappSid: result.sid,
           sentAt: new Date()
         });
-        successful++;
+
+        successCount++;
 
       } catch (error) {
         console.error(`❌ Failed to send reminder to ${member.name}:`, error);
+
         results.push({
           memberId: member._id,
           memberName: member.name,
+          phoneNo: member.phoneNo,
           status: 'failed',
-          error: error.message
+          error: error.message,
+          sentAt: new Date()
         });
-        failed++;
+
+        failureCount++;
+      }
+    }
+
+    // TRACK WHATSAPP USAGE DIRECTLY (track each successful reminder)
+    if (successCount > 0) {
+      const owner = await Owner.findById(ownerId);
+      if (owner) {
+        // Track each successful WhatsApp reminder separately
+        for (let i = 0; i < successCount; i++) {
+          await owner.trackFeatureUsage('whatsappReminders');
+        }
+        console.log(`📊 Tracked ${successCount} WhatsApp reminders for owner: ${owner.email}`);
+        console.log(`📈 Updated WhatsApp usage count: ${owner.usageStats.featureUsage.whatsappReminders.count + successCount}`);
+      } else {
+        console.error('❌ Owner not found for usage tracking');
       }
     }
 
     // Send summary to owner
-    if (process.env.OWNER_PHONE && successful > 0) {
-      try {
-        const summaryMessage = `Bulk reminders sent: ${successful} successful, ${failed} failed out of ${dueMembers.length} due members.`;
-        await sendWhatsapp(process.env.OWNER_PHONE, summaryMessage);
+    try {
+      const ownerPhone = req.user.mobileNumber;
+      if (ownerPhone) {
+        const summaryMessage = `Bulk reminders sent: ${successCount} successful, ${failureCount} failed out of ${dueMembers.length} due members.`;
+        
+        console.log(`📱 Sending summary to owner: ${ownerPhone}`);
+        await sendWhatsapp(ownerPhone, summaryMessage);
         console.log(`📱 Summary sent to owner`);
-      } catch (error) {
-        console.error('Error sending summary to owner:', error);
+
+        // Track owner summary message as well
+        const owner = await Owner.findById(ownerId);
+        if (owner) {
+          await owner.trackFeatureUsage('whatsappReminders');
+          console.log(`📊 Tracked owner summary message`);
+        }
       }
+    } catch (summaryError) {
+      console.error('❌ Failed to send summary to owner:', summaryError);
+      // Don't fail the entire operation if summary fails
     }
 
-    console.log(`✅ Bulk reminder process completed - Success: ${successful}, Failed: ${failed}`);
+    console.log(`✅ Bulk reminder process completed - Success: ${successCount}, Failed: ${failureCount}`);
 
-    res.json({
+    res.status(200).json({
       success: true,
-      message: `Reminders sent to ${successful} members successfully`,
+      message: `Bulk reminders sent successfully`,
       data: {
-        totalMembers: dueMembers.length,
-        successful,
-        failed,
-        results
+        total: dueMembers.length,
+        successful: successCount,
+        failed: failureCount,
+        usageTracked: successCount + (req.user.mobileNumber ? 1 : 0), // Including owner summary
+        members: results
       }
     });
 
   } catch (error) {
-    console.error('❌ Error in bulk reminder sending:', error);
+    console.error('❌ Error in sendAllMemberReminders:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to send bulk reminders',
-      error: error.message,
-      data: {
-        totalMembers: 0,
-        successful: 0,
-        failed: 0,
-        results: []
-      }
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 };
-
 // SECURITY FIX: Mark Member Fee Paid (owner-specific)
 const markMemberFeePaid = async (req, res) => {
   try {
